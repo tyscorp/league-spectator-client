@@ -38,7 +38,7 @@ SpectatorClient.prototype.getGameMetaData = function () {
         }
 
         var data = JSON.parse(body);
-        this.emit('metadata', data);
+        this.emit('gameMetaData', data);
 
         return data;
     }.bind(this));
@@ -56,7 +56,7 @@ SpectatorClient.prototype.getLastChunkInfo = function () {
         }
 
         var data = JSON.parse(body);
-        this.emit('chunkinfo', data);
+        this.emit('lastChunkInfo', data);
 
         return data;
     }.bind(this));
@@ -74,7 +74,7 @@ SpectatorClient.prototype.getGameDataChunk = function (chunkId) {
             throw error;
         }
 
-        this.emit('chunk', { chunkId: chunkId, data: body });
+        this.emit('chunk', chunkId, body);
 
         return chunkId;
     }.bind(this));
@@ -92,7 +92,7 @@ SpectatorClient.prototype.getKeyFrame = function (keyFrameId) {
             throw error;
         }
 
-        this.emit('keyframe', { keyFrameId: keyFrameId, data: body });
+        this.emit('keyFrame', keyFrameId, body);
 
         return keyFrameId;
     }.bind(this));
@@ -110,14 +110,15 @@ SpectatorClient.prototype.endOfGameStats = function () {
             throw error;
         }
 
-        this.emit('endofgamestats', body);
+        this.emit('endOfGameStats', body);
 
         return body;
     }.bind(this));
 };
 
 SpectatorClient.prototype.init = function () { 
-    return this.getGameMetaData().bind(this)
+    return this.version().bind(this)
+    .then(this.getGameMetaData)
     .then(this.update)
     .then(function () {       
         this.emit('end');
@@ -129,7 +130,9 @@ SpectatorClient.prototype.init = function () {
 };
 
 SpectatorClient.prototype.update = function () {
-    return this.getLastChunkInfo().then(function (lastChunkInfo) {
+    return this.getLastChunkInfo().bind(this).then(function (lastChunkInfo) {
+        var now = Date.now();
+
         var chunkIds = [];
         var keyFrameIds = [];
 
@@ -156,19 +159,22 @@ SpectatorClient.prototype.update = function () {
             });
         }));
 
-        return Promise.settle([chunkP, keyFrameP]).then(function () {
-            
-            if (lastChunkInfo.nextAvailableChunk == 0
-                || lastChunkInfo.endGameChunkId > 0 && this.chunk_id == lastChunkInfo.endGameChunkId) {
+        // we don't care about the result, just that they're done
+        return Promise.settle([chunkP, keyFrameP]); 
+    }).then(function () {
+        // check to see if we've finished
+        if (lastChunkInfo.nextAvailableChunk == 0
+            || lastChunkInfo.endGameChunkId > 0 && this.chunk_id == lastChunkInfo.endGameChunkId) {
 
-                return Promise.join(this.endOfGameStats(), this.getGameMetaData());
-            }
+            return Promise.join(this.endOfGameStats(), this.getGameMetaData());
+        }
 
-            var delay = lastChunkInfo.nextAvailableChunk < 1 ? 10000 : lastChunkInfo.nextAvailableChunk;
+        var delay = lastChunkInfo.nextAvailableChunk < 1
+            ? 10000
+            : lastChunkInfo.nextAvailableChunk - (Date.now() - now);
 
-            return Promise.delay(delay).bind(this).then(this.update);
-        }.bind(this));
-    }.bind(this));
+        return Promise.delay(delay).bind(this).then(this.update);
+    });
 };
 
 module.exports = SpectatorClient;
