@@ -17,89 +17,106 @@ var SpectatorClient = function (platformId, credentials) {
 util.inherits(SpectatorClient, EventEmitter);
 
 SpectatorClient.prototype.version = function () {
-    var self = this;
-
-    return request(self.baseURL + '/version').spread(function (response, body) {
-        self.emit('version', body);
+    return request(
+        this.baseURL + '/version'
+    ).spread(function (response, body) {
+        this.emit('version', body);
 
         return body;
-    });
+    }.bind(this));
 };
 
 SpectatorClient.prototype.getGameMetaData = function () {
-    var self = this;
+    return request(
+        this.baseURL + '/getGameMetaData/' + this.platformId + '/' + this.gameId + '/0/token'
+    ).spread(function (response, body) {
+        if (response.statusCode !== 200) {
+            var error = new Error('No Game found for provided gameKey in Store. GameKey:' + this.gameId + ';' + this.platformId + ' chunkId: ' + chunkId);
+            this.emit('error', error);
 
-    return request(self.baseURL + '/getGameMetaData/' + self.platformId + '/' + self.gameId + '/0/token').spread(function (response, body) {
+            throw error;
+        }
+
         var data = JSON.parse(body);
-        self.emit('metadata', data);
+        this.emit('metadata', data);
 
         return data;
-    });
+    }.bind(this));
 };
 
 SpectatorClient.prototype.getLastChunkInfo = function () {
-    var self = this;
-
     return request(
-        self.baseURL + '/getLastChunkInfo/' + self.platformId + '/' + self.gameId + '/30000/token'
+        this.baseURL + '/getLastChunkInfo/' + this.platformId + '/' + this.gameId + '/30000/token'
     ).spread(function (response, body) {
+        if (response.statusCode !== 200) {
+            var error = new Error('No Game found for provided gameKey in Store. GameKey:' + this.gameId + ';' + this.platformId + ' chunkId: ' + chunkId);
+            this.emit('error', error);
+
+            throw error;
+        }
+
         var data = JSON.parse(body);
-        self.emit('chunkinfo', data);
+        this.emit('chunkinfo', data);
 
         return data;
-    });
+    }.bind(this));
 };
 
 SpectatorClient.prototype.getGameDataChunk = function (chunkId) {
-    var self = this;
-
     return request({
-        url: self.baseURL + '/getGameDataChunk/' + self.platformId + '/' + self.gameId + '/' + chunkId + '/token',
+        url: this.baseURL + '/getGameDataChunk/' + this.platformId + '/' + this.gameId + '/' + chunkId + '/token',
         encoding: null
     }).spread(function (response, body) {
-        if (response.statusCode !== 200) throw new Error('Chunk not available on server for gameKey: GameKey:' + self.gameId + ';' + self.platformId + ' chunkId: ' + chunkId);
+        if (response.statusCode !== 200) {
+            var error = new Error('Chunk not available on server for gameKey: GameKey:' + this.gameId + ';' + this.platformId + ' chunkId: ' + chunkId);
+            this.emit('error', error);
 
-        self.emit('chunk', { chunkId: chunkId, data: body });
+            throw error;
+        }
+
+        this.emit('chunk', { chunkId: chunkId, data: body });
 
         return chunkId;
-    });
+    }.bind(this));
 };
 
 SpectatorClient.prototype.getKeyFrame = function (keyFrameId) {
-    var self = this;
-    
     return request({
-        url: self.baseURL + '/getKeyFrame/' + self.platformId + '/' + self.gameId + '/' + keyFrameId + '/token',
+        url: this.baseURL + '/getKeyFrame/' + this.platformId + '/' + this.gameId + '/' + keyFrameId + '/token',
         encoding: null
     }).spread(function (response, body) {
-        if (response.statusCode !== 200) throw new Error('KeyFrame not available on server for gameKey: GameKey:' + self.gameId + ';' + self.platformId + ' keyFrameId: ' + keyFrameId);
+        if (response.statusCode !== 200) {
+            var error = new Error('KeyFrame not available on server for gameKey: GameKey:' + this.gameId + ';' + this.platformId + ' chunkId: ' + chunkId);
+            this.emit('error', error);
 
-        self.emit('keyframe', { keyFrameId: keyFrameId, data: body });
+            throw error;
+        }
+
+        this.emit('keyframe', { keyFrameId: keyFrameId, data: body });
 
         return keyFrameId;
-    });
+    }.bind(this));
 };
 
 SpectatorClient.prototype.endOfGameStats = function () {
-    var self = this;
-
     return request({
-        url: self.baseURL + '/endOfGameStats/' + self.platformId + '/' + self.gameId + '/token',
+        url: this.baseURL + '/endOfGameStats/' + this.platformId + '/' + this.gameId + '/token',
         encoding: null
     }).spread(function (response, body) {
-        self.emit('endofgamestats', body);
+        if (response.statusCode !== 200) {
+            var error = new Error('No Game stats found for provided gameKey in Store. GameKey:' + this.gameId + ';' + this.platformId + ' chunkId: ' + chunkId);
+            this.emit('error', error);
+
+            throw error;
+        }
+
+        this.emit('endofgamestats', body);
 
         return body;
-    });
+    }.bind(this));
 };
 
-// what the fuck is this ???
-SpectatorClient.prototype.messages = function (fn) {
-
-};
-
-SpectatorClient.prototype.init = function () {
-    
+SpectatorClient.prototype.init = function () { 
     return this.getGameMetaData().bind(this)
     .then(this.update)
     .then(function () {       
@@ -112,48 +129,46 @@ SpectatorClient.prototype.init = function () {
 };
 
 SpectatorClient.prototype.update = function () {
-    var self = this;
-
-    return self.getLastChunkInfo().then(function (lastChunkInfo) {
+    return this.getLastChunkInfo().then(function (lastChunkInfo) {
         var chunkIds = [];
         var keyFrameIds = [];
 
         for (var i = 1; i <= lastChunkInfo.chunkId; i++) {
-            if (self.chunks[i] !== true) chunkIds.push(i);
+            if (this.chunks[i] !== true) chunkIds.push(i);
         }
 
         for (var j = 1; j <= lastChunkInfo.keyFrameId; j++) {
-            if (self.keyFrames[j] !== true) keyFrameIds.push(j);
+            if (this.keyFrames[j] !== true) keyFrameIds.push(j);
         }
 
-        self.chunk_id = i - 1;
-        self.keyFrame_id = j - 1;
+        this.chunk_id = i - 1;
+        this.keyFrame_id = j - 1;
 
         var chunkP = Promise.settle(_.map(chunkIds, function (chunkId) {
-            return self.getGameDataChunk(chunkId).then(function () {
-                self.chunks[chunkId] = true;
+            return this.getGameDataChunk(chunkId).then(function () {
+                this.chunks[chunkId] = true;
             });
         }));
 
         var keyFrameP = Promise.settle(_.map(keyFrameIds, function (keyFrameId) {
-            return self.getKeyFrame(keyFrameId).then(function () {
-                self.keyFrames[keyFrameId] = true;
+            return this.getKeyFrame(keyFrameId).then(function () {
+                this.keyFrames[keyFrameId] = true;
             });
         }));
 
         return Promise.settle([chunkP, keyFrameP]).then(function () {
             
             if (lastChunkInfo.nextAvailableChunk == 0
-                || lastChunkInfo.endGameChunkId > 0 && self.chunk_id == lastChunkInfo.endGameChunkId) {
+                || lastChunkInfo.endGameChunkId > 0 && this.chunk_id == lastChunkInfo.endGameChunkId) {
 
-                return Promise.join(self.endOfGameStats(), self.getGameMetaData());
+                return Promise.join(this.endOfGameStats(), this.getGameMetaData());
             }
 
             var delay = lastChunkInfo.nextAvailableChunk < 1 ? 10000 : lastChunkInfo.nextAvailableChunk;
 
-            return Promise.delay(delay).bind(self).then(self.update);
-        });
-    });
+            return Promise.delay(delay).bind(this).then(this.update);
+        }.bind(this));
+    }.bind(this));
 };
 
 module.exports = SpectatorClient;
